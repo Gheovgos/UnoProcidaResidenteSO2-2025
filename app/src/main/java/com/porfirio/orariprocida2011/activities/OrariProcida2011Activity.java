@@ -29,6 +29,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
+import com.porfirio.orariprocida2011.threads.alerts.AlertsService;
 import com.porfirio.orariprocida2011.threads.companies.CompaniesUpdate;
 import com.porfirio.orariprocida2011.threads.companies.OnRequestCompaniesDAO;
 import com.porfirio.orariprocida2011.threads.taxies.OnRequestTaxisDAO;
@@ -36,12 +37,10 @@ import com.porfirio.orariprocida2011.threads.transports.OnRequestTransportsDAO;
 import com.porfirio.orariprocida2011.threads.transports.TransportsUpdate;
 import com.porfirio.orariprocida2011.entity.Alert;
 import com.porfirio.orariprocida2011.threads.alerts.AlertUpdate;
-import com.porfirio.orariprocida2011.threads.alerts.OnRequestAlertsDAO;
 import com.porfirio.orariprocida2011.threads.weather.WeatherService;
 import com.porfirio.orariprocida2011.utils.Analytics;
 import com.porfirio.orariprocida2011.utils.AnalyticsApplication;
 import com.porfirio.orariprocida2011.R;
-import com.porfirio.orariprocida2011.threads.weather.OnRequestWeatherDAO;
 import com.porfirio.orariprocida2011.threads.weather.WeatherUpdate;
 import com.porfirio.orariprocida2011.dialogs.DettagliMezzoDialog;
 import com.porfirio.orariprocida2011.dialogs.SegnalazioneDialog;
@@ -50,13 +49,13 @@ import com.porfirio.orariprocida2011.entity.Meteo;
 import com.porfirio.orariprocida2011.entity.Mezzo;
 import com.porfirio.orariprocida2011.entity.Osservazione;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
+import java.util.Objects;
 import java.util.TimeZone;
 
 import android.content.ComponentName;
@@ -109,9 +108,38 @@ public class OrariProcida2011Activity extends FragmentActivity {
     private SegnalazioneDialog segnalazioneDialog;
 
     private OnRequestCompaniesDAO companiesDAO;
-    private OnRequestWeatherDAO weatherDAO;
+    // private OnRequestWeatherDAO weatherDAO;
     private OnRequestTransportsDAO transportsDAO;
-    private OnRequestAlertsDAO alertsDAO;
+    // private OnRequestAlertsDAO alertsDAO;
+    private AlertsService alertsService;
+    private boolean isAlertsBound = false;
+    private final ServiceConnection alertsConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            AlertsService.LocalBinder binder = (AlertsService.LocalBinder) service;
+            alertsService = binder.getService();
+            isAlertsBound = true;
+
+            Log.d("AlertsService", "Servizio alert connesso!");
+
+            // Adesso che alertsService è disponibile, inizializziamo DettagliMezzoDialog
+            dettagliMezzoDialog = new DettagliMezzoDialog(alertsService, taxisDAO);
+            dettagliMezzoDialog.setDettagliMezzoDialog(fm, OrariProcida2011Activity.this, OrariProcida2011Activity.this, c);
+            dettagliMezzoDialog.setAnalytics(analytics);
+            segnalazioneDialog = new SegnalazioneDialog(alertsService);
+
+
+            // Osserviamo gli aggiornamenti sugli alert
+            alertsService.getUpdates().observe(OrariProcida2011Activity.this, OrariProcida2011Activity.this::onAlertsUpdate);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            alertsService = null;
+            isAlertsBound = false;
+        }
+    };
+
     private OnRequestTaxisDAO taxisDAO;
     private Analytics analytics;
 
@@ -148,12 +176,17 @@ public class OrariProcida2011Activity extends FragmentActivity {
         startService(intent);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
+        Intent alertsIntent = new Intent(this, AlertsService.class);
+        startService(alertsIntent);
+        bindService(alertsIntent, alertsConnection, Context.BIND_AUTO_CREATE);
+
+
         transportsDAO = new OnRequestTransportsDAO();
         transportsDAO.getUpdates().observe(this, this::onTransportsUpdate);
         transportsDAO.requestUpdate();
 
-        alertsDAO = new OnRequestAlertsDAO();
-        alertsDAO.getUpdates().observe(this, this::onAlertsUpdate);
+        // alertsDAO = new OnRequestAlertsDAO();
+        // alertsDAO.getUpdates().observe(this, this::onAlertsUpdate);
         // alerts are requested after transports data is received
 
         companiesDAO = new OnRequestCompaniesDAO();
@@ -228,11 +261,6 @@ public class OrariProcida2011Activity extends FragmentActivity {
         aalvMezzi = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1);
         lvMezzi.setAdapter(aalvMezzi);
 
-        dettagliMezzoDialog = new DettagliMezzoDialog(alertsDAO, taxisDAO);
-        dettagliMezzoDialog.setDettagliMezzoDialog(fm, this, this, c);
-        dettagliMezzoDialog.setAnalytics(analytics);
-
-        segnalazioneDialog = new SegnalazioneDialog(alertsDAO);
         //listener sul click di un item della lista
         lvMezzi.setOnItemClickListener((arg0, arg1, arg2, arg3) -> {
             analytics.send(ANALYTICS_CATEGORY_UI_EVENT, "Click Dettagli Mezzo");
@@ -302,14 +330,22 @@ public class OrariProcida2011Activity extends FragmentActivity {
 
         // NOTE:
         // LiveData should automatically remove destroyed observers but let's do it for clarity's sake
-        alertsDAO.getUpdates().removeObservers(this);
+        alertsService.getUpdates().removeObservers(this);
         companiesDAO.getUpdates().removeObservers(this);
         transportsDAO.getUpdates().removeObservers(this);
-        weatherDAO.getUpdates().removeObservers(this);
-        weatherDAO.close();
+        // weatherDAO.getUpdates().removeObservers(this);
+        // weatherDAO.close();
+
+        // Pulisce il service per il Meteo
         if (isBound) {
             unbindService(connection);
             isBound = false;
+        }
+
+        // Pulisce il service per l'Alert
+        if (isAlertsBound) {
+            unbindService(alertsConnection);
+            isAlertsBound = false;
         }
     }
 
@@ -450,16 +486,21 @@ public class OrariProcida2011Activity extends FragmentActivity {
 
     private String espandiPorto(String porto) {
         switch (porto) {
-            case "Napoli":
+            case "Napoli" -> {
                 return "Napoli Porta di Massa o Napoli Beverello";
-            case "Napoli o Pozzuoli":
+            }
+            case "Napoli o Pozzuoli" -> {
                 return "Napoli Porta di Massa o Napoli Beverello o Pozzuoli";
-            case "Ischia":
+            }
+            case "Ischia" -> {
                 return "Ischia Porto o Casamicciola";
-            case "Monte di Procida":
+            }
+            case "Monte di Procida" -> {
                 return "Monte di Procida";
-            default:
+            }
+            default -> {
                 return porto;
+            }
         }
     }
 
@@ -583,7 +624,7 @@ public class OrariProcida2011Activity extends FragmentActivity {
 
     private void setSpnPortoArrivo(Spinner spnPortoArrivo, final ArrayAdapter<CharSequence> adapter3) {
         for (int i = 0; i < spnPortoArrivo.getCount(); i++) {
-            if (adapter3.getItem(i).equals(portoArrivo)) {
+            if (Objects.equals(adapter3.getItem(i), portoArrivo)) {
                 spnPortoArrivo.setSelection(i);
             }
         }
@@ -591,7 +632,7 @@ public class OrariProcida2011Activity extends FragmentActivity {
 
     private void setSpnPortoPartenza(Spinner spnPortoPartenza, ArrayAdapter<CharSequence> adapter2) {
         for (int i = 0; i < spnPortoPartenza.getCount(); i++) {
-            if (adapter2.getItem(i).equals(portoPartenza)) {
+            if (Objects.equals(adapter2.getItem(i), portoPartenza)) {
                 spnPortoPartenza.setSelection(i);
             }
         }
@@ -611,7 +652,7 @@ public class OrariProcida2011Activity extends FragmentActivity {
         // Bisogna gestire l'eccezione e restituire un valore di default che si potrà settare in altro punto dell'app
         try {
             l = myManager.getLastKnownLocation(BestProvider);
-            Log.d("ACTIVITY", "Posizione:" + l.getLongitude() + "," + l.getLatitude());
+            Log.d("ACTIVITY", "Posizione:" + (l != null ? l.getLongitude() : 0) + "," + (l != null ? l.getLatitude() : 0));
         } catch (Exception e) {
             Log.e("Activity", "GPS: ", e);
         }
@@ -681,22 +722,25 @@ public class OrariProcida2011Activity extends FragmentActivity {
     }
 
     private void onAlertsUpdate(AlertUpdate update) {
+        boolean showToast = hasReceivedAlerts;
         hasReceivedAlerts = true;
 
         if (update.isValid()) {
+            List<Alert> alerts = update.getData();
 
-            // FIXME: highly inefficient, transport list is sorted by time so it could be possible to do a binary search
-            for (Alert alert : update.getData()) {
-                for (Mezzo transport : transportList) {
-                    if (sameTransport(transport, alert))
-                        transport.addReason(alert.getReason());
-                }
+            Log.d("AlertsService", "Aggiornamento alert ricevuto:");
+            for (Alert alert : alerts) {
+                Log.d("AlertsService", "Alert: " + alert.getDetails() + " (Motivo: " + alert.getReason() + ")");
             }
 
-            aggiornaLista();
+            aggiornaLista(); // Aggiorna la UI se necessario
+
+            // DEBUG ONLY: Si può modificare
+            if (showToast) {
+                Toast.makeText(this, "Alert aggiornati!", Toast.LENGTH_SHORT).show();
+            }
         } else {
-            // TODO: handle exception
-            Log.e("MainActivity", "OnAlertsUpdate: ", update.getError());
+            Log.e("AlertsService", "Errore nell'aggiornamento alert", update.getError());
             Toast.makeText(this, getString(R.string.error_update_alerts), Toast.LENGTH_SHORT).show();
         }
     }
@@ -723,7 +767,8 @@ public class OrariProcida2011Activity extends FragmentActivity {
             transportList.addAll(update.getData());
             aggiornaLista();
 
-            alertsDAO.requestUpdate();
+            // alertsDAO.requestUpdate();
+            alertsService.getUpdates();
 
             if (showToast)
                 Toast.makeText(this, getString(R.string.orariAggiornatiAl) + " " + DateTimeFormatter.ISO_LOCAL_DATE.format(update.getUpdateTime()), Toast.LENGTH_SHORT).show();
@@ -774,32 +819,45 @@ public class OrariProcida2011Activity extends FragmentActivity {
 
     private String getWindBeaufortString(int force) {
         switch (force) {
-            case 0:
+            case 0 -> {
                 return getString(R.string.calma);
-            case 1:
+            }
+            case 1 -> {
                 return getString(R.string.bavaDiVento);
-            case 2:
+            }
+            case 2 -> {
                 return getString(R.string.brezzaLeggera);
-            case 3:
+            }
+            case 3 -> {
                 return getString(R.string.brezzaTesa);
-            case 4:
+            }
+            case 4 -> {
                 return getString(R.string.ventoModerato);
-            case 5:
+            }
+            case 5 -> {
                 return getString(R.string.ventoTeso);
-            case 6:
+            }
+            case 6 -> {
                 return getString(R.string.ventoFresco);
-            case 7:
+            }
+            case 7 -> {
                 return getString(R.string.ventoForte);
-            case 8:
+            }
+            case 8 -> {
                 return getString(R.string.burrasca);
-            case 9:
+            }
+            case 9 -> {
                 return getString(R.string.burrascaForte);
-            case 10:
+            }
+            case 10 -> {
                 return getString(R.string.tempesta);
-            case 11:
+            }
+            case 11 -> {
                 return getString(R.string.fortunale);
-            case 12:
+            }
+            case 12 -> {
                 return getString(R.string.uragano);
+            }
         }
 
         return getString(R.string.errore);
@@ -811,49 +869,34 @@ public class OrariProcida2011Activity extends FragmentActivity {
 
     private String getWindDirectionString(Osservazione.Direction direction) {
         switch (direction) {
-            case N:
+            case N -> {
                 return getString(R.string.nord);
-            case NW:
+            }
+            case NW -> {
                 return getString(R.string.nordOvest);
-            case NE:
+            }
+            case NE -> {
                 return getString(R.string.nordEst);
-            case E:
+            }
+            case E -> {
                 return getString(R.string.est);
-            case SE:
+            }
+            case SE -> {
                 return getString(R.string.sudEst);
-            case S:
+            }
+            case S -> {
                 return getString(R.string.sud);
-            case SW:
+            }
+            case SW -> {
                 return getString(R.string.sudOvest);
-            case W:
+            }
+            case W -> {
                 return getString(R.string.ovest);
-            default:
+            }
+            default -> {
                 return null; // NOTE: it can't happen, here just to make the compiler happy
+            }
         }
-    }
-
-    private String getWeatherConditionsString(Context context, Mezzo route) {
-        double extraWind = meteo.getForecast(context, route);
-
-        if (extraWind <= 0)
-            return "";
-        else if (extraWind <= 1)
-            return " - " + getString(R.string.pocoProbabile);
-        else if (extraWind <= 2)
-            return " - " + getString(R.string.aRischio);
-        else if (extraWind <= 3)
-            return " - " + getString(R.string.corsaQuasi);
-        else
-            return " - " + getString(R.string.corsaImpossibile);
-    }
-
-    private boolean sameTransport(Mezzo transport, Alert alert) {
-        LocalDate transportDate = LocalDate.of(c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
-
-        if (transport.getGiornoSeguente())
-            transportDate = transportDate.plusDays(1);
-
-        return alert.getRouteId().equals(transport.getId()) && alert.getTransportDate().equals(transportDate);
     }
 
 }

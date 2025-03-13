@@ -18,7 +18,7 @@ import com.porfirio.orariprocida2011.R;
 import com.porfirio.orariprocida2011.activities.OrariProcida2011Activity;
 import com.porfirio.orariprocida2011.entity.Compagnia;
 import com.porfirio.orariprocida2011.entity.Mezzo;
-import com.porfirio.orariprocida2011.threads.alerts.AlertsDAO;
+import com.porfirio.orariprocida2011.threads.alerts.AlertsService;
 import com.porfirio.orariprocida2011.threads.taxies.TaxisDAO;
 import com.porfirio.orariprocida2011.utils.Analytics;
 
@@ -43,12 +43,14 @@ public class DettagliMezzoDialog extends DialogFragment implements OnClickListen
     private FragmentManager fragmentManager;
     private ArrayList<Compagnia> lc;
 
-    private final AlertsDAO alertsDAO;
+    // private final AlertsDAO alertsDAO;
+
+    private final AlertsService alertsService;
     private final TaxisDAO taxisDAO;
     private Analytics analytics;
 
-    public DettagliMezzoDialog(AlertsDAO alertsDAO, TaxisDAO taxisDAO) {
-        this.alertsDAO = Objects.requireNonNull(alertsDAO);
+    public DettagliMezzoDialog(AlertsService alertsService, TaxisDAO taxisDAO) {
+        this.alertsService = Objects.requireNonNull(alertsService);
         this.taxisDAO = taxisDAO;
     }
 
@@ -181,7 +183,7 @@ public class DettagliMezzoDialog extends DialogFragment implements OnClickListen
                 taxiDialog.setTaxis(update.getData());
         });
 
-        segnalazioneDialog = new SegnalazioneDialog(alertsDAO);
+        segnalazioneDialog = new SegnalazioneDialog(alertsService);
         segnalazioneDialog.setOrarioRef(calen);
         segnalazioneDialog.setMezzo(mezzo);
         segnalazioneDialog.setCallingContext(this.getContext());
