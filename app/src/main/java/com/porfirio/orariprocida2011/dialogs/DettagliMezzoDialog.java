@@ -3,6 +3,7 @@ package com.porfirio.orariprocida2011.dialogs;
 
 import android.content.Context;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -20,6 +21,7 @@ import com.porfirio.orariprocida2011.entity.Compagnia;
 import com.porfirio.orariprocida2011.entity.Mezzo;
 import com.porfirio.orariprocida2011.threads.alerts.AlertsService;
 import com.porfirio.orariprocida2011.threads.taxies.TaxisDAO;
+import com.porfirio.orariprocida2011.threads.taxies.TaxisService;
 import com.porfirio.orariprocida2011.utils.Analytics;
 
 import java.time.LocalDate;
@@ -46,12 +48,12 @@ public class DettagliMezzoDialog extends DialogFragment implements OnClickListen
     // private final AlertsDAO alertsDAO;
 
     private final AlertsService alertsService;
-    private final TaxisDAO taxisDAO;
+    private final TaxisService taxisService;
     private Analytics analytics;
 
-    public DettagliMezzoDialog(AlertsService alertsService, TaxisDAO taxisDAO) {
+    public DettagliMezzoDialog(AlertsService alertsService, TaxisService taxisService) {
         this.alertsService = Objects.requireNonNull(alertsService);
-        this.taxisDAO = taxisDAO;
+        this.taxisService = taxisService;
     }
 
     public void setDettagliMezzoDialog(FragmentManager fm, OrariProcida2011Activity a, Context context, Calendar cal) {
@@ -178,10 +180,19 @@ public class DettagliMezzoDialog extends DialogFragment implements OnClickListen
         taxiDialog = new TaxiDialog();
         taxiDialog.setPorto(mezzo.portoPartenza);
 
-        taxisDAO.getUpdates().observe(this, update -> {
-            if (update.isValid())
-                taxiDialog.setTaxis(update.getData());
-        });
+        if (taxisService != null && taxiDialog != null) {
+            taxisService.requestUpdate();
+            taxisService.getUpdates().observe(this, update -> {
+                if (update.isValid()) {
+                    taxiDialog.setTaxis(update.getData());
+                    Log.d("DettagliMezzoDialog", "Dati taxi aggiornati: " + update.getData().size());
+                } else {
+                    Log.e("DettagliMezzoDialog", "Errore nell'aggiornamento dei taxi");
+                }
+            });
+        }
+
+
 
         segnalazioneDialog = new SegnalazioneDialog(alertsService);
         segnalazioneDialog.setOrarioRef(calen);

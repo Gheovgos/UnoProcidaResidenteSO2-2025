@@ -30,6 +30,7 @@
         <service android:name=".threads.alerts.AlertsService"/>
         <service android:name=".threads.transports.TransportsService"/>
         <service android:name=".threads.companies.CompaniesService"/>
+        <service android:name=".threads.taxies.TaxisService"/>
 
         <activity
             android:name=".activities.OrariProcida2011Activity"
