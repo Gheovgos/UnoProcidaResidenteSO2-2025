@@ -26,10 +26,7 @@
         android:supportsRtl="false"
         android:theme="@android:style/Theme.Holo"
         android:usesCleartextTraffic="true">
-        <!--        <service-->
-        <!--            android:name=".threads.weather.WeatherService"-->
-        <!--            android:enabled="true"-->
-        <!--            android:exported="false"></service>-->
+        <service android:name=".threads.weather.experimental.WeatherService" />
 
         <activity
             android:name=".activities.OrariProcida2011Activity"

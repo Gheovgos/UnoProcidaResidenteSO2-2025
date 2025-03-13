@@ -3,6 +3,8 @@ package com.porfirio.orariprocida2011.activities;
 import android.Manifest;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.location.Criteria;
 import android.location.Location;
@@ -35,6 +37,7 @@ import com.porfirio.orariprocida2011.threads.transports.TransportsUpdate;
 import com.porfirio.orariprocida2011.entity.Alert;
 import com.porfirio.orariprocida2011.threads.alerts.AlertUpdate;
 import com.porfirio.orariprocida2011.threads.alerts.OnRequestAlertsDAO;
+import com.porfirio.orariprocida2011.threads.weather.experimental.WeatherService;
 import com.porfirio.orariprocida2011.utils.Analytics;
 import com.porfirio.orariprocida2011.utils.AnalyticsApplication;
 import com.porfirio.orariprocida2011.R;
@@ -56,6 +59,10 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.TimeZone;
 
+import android.content.ComponentName;
+import android.content.ServiceConnection;
+import android.os.IBinder;
+
 public class OrariProcida2011Activity extends FragmentActivity {
 
     private static final String ANALYTICS_CATEGORY_APP_EVENT = "App Event";
@@ -63,6 +70,24 @@ public class OrariProcida2011Activity extends FragmentActivity {
     private static final String ANALYTICS_CATEGORY_USER_EVENT = "User";
 
     private static FragmentManager fm;
+    private final ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            WeatherService.LocalBinder binder = (WeatherService.LocalBinder) service;
+            weatherService = binder.getService();
+            isBound = true;
+
+            // Osservare gli aggiornamenti meteo
+            weatherService.getUpdates().observe(OrariProcida2011Activity.this, OrariProcida2011Activity.this::onWeatherUpdate);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            weatherService = null;
+            isBound = false;
+        }
+    };
+
 
     public Calendar c;
     public AlertDialog aboutDialog;
@@ -91,6 +116,10 @@ public class OrariProcida2011Activity extends FragmentActivity {
     private OnRequestTaxisDAO taxisDAO;
     private Analytics analytics;
 
+    private WeatherService weatherService;
+    private boolean isBound = false;
+
+
     private boolean hasReceivedWeather, hasReceivedCompanies, hasReceivedTransports, hasReceivedAlerts;
 
     @Override
@@ -112,9 +141,13 @@ public class OrariProcida2011Activity extends FragmentActivity {
         // they should be moved
         analytics = new Analytics((AnalyticsApplication) getApplication());
 
-        weatherDAO = new OnRequestWeatherDAO();
-        weatherDAO.getUpdates().observe(this, this::onWeatherUpdate);
-        weatherDAO.requestUpdate();
+        // weatherDAO = new OnRequestWeatherDAO();
+        // weatherDAO.getUpdates().observe(this, this::onWeatherUpdate);
+        // weatherDAO.requestUpdate();
+
+        Intent intent = new Intent(this, WeatherService.class);
+        startService(intent);
+        bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
         transportsDAO = new OnRequestTransportsDAO();
         transportsDAO.getUpdates().observe(this, this::onTransportsUpdate);
@@ -275,6 +308,10 @@ public class OrariProcida2011Activity extends FragmentActivity {
         transportsDAO.getUpdates().removeObservers(this);
         weatherDAO.getUpdates().removeObservers(this);
         weatherDAO.close();
+        if (isBound) {
+            unbindService(connection);
+            isBound = false;
+        }
     }
 
     @Override
@@ -301,7 +338,16 @@ public class OrariProcida2011Activity extends FragmentActivity {
                 return true;
             case (R.id.meteo):
                 analytics.send(ANALYTICS_CATEGORY_UI_EVENT, "Update Meteo da Menu");
-                weatherDAO.requestUpdate();
+
+                if (isBound && weatherService != null) {
+                    Log.d("WeatherService", "Menu: forzo aggiornamento meteo");
+
+                    // Forza un aggiornamento manuale prendendo il valore attuale del LiveData
+                    weatherService.getUpdates().observe(this, this::onWeatherUpdate);
+                } else {
+                    Log.e("WeatherService", "Service non connesso, impossibile aggiornare il meteo");
+                    Toast.makeText(this, "Servizio meteo non disponibile", Toast.LENGTH_SHORT).show();
+                }
                 return true;
             case (R.id.esci):
                 analytics.send(ANALYTICS_CATEGORY_UI_EVENT, "Exit da Menu");
@@ -695,20 +741,25 @@ public class OrariProcida2011Activity extends FragmentActivity {
 
         if (update.isValid()) {
             List<Osservazione> forecasts = update.getData();
-
             meteo.setForecasts(forecasts);
-
             aggiornaLista();
 
-            // NOTE: before it would show a complete dialog, as of now I changed it to just display a toast
+            Osservazione currentWeather = forecasts.get(0);
+
+            Log.d("WeatherService", "Aggiornamento meteo ricevuto:");
+            Log.d("WeatherService", "Vento: " + currentWeather.getWindSpeed() + " km/h");
+            Log.d("WeatherService", "Direzione: " + getWindDirectionString(currentWeather));
+            Log.d("WeatherService", "Orario rilevazione: " + currentWeather.getTime().toString());
+
             if (showToast)
-                showWeatherUpdateMessage(meteo.getForecasts().get(0));
+                showWeatherUpdateMessage(currentWeather);
         } else {
-            // TODO: handle exception
-            Log.e("MainActivity", "OnWeatherUpdate: ", update.getError());
+            Log.e("WeatherService", "Errore nell'aggiornamento meteo", update.getError());
             Toast.makeText(this, getString(R.string.error_update_weather), Toast.LENGTH_SHORT).show();
         }
     }
+
+
 
     private void showWeatherUpdateMessage(Osservazione forecast) {
         String message = getString(R.string.updated) + " " + DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).format(forecast.getTime()) + "\n" +
@@ -807,3 +858,4 @@ public class OrariProcida2011Activity extends FragmentActivity {
     }
 
 }
+
