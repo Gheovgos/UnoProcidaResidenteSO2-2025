@@ -30,8 +30,8 @@ import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
 import com.porfirio.orariprocida2011.threads.alerts.AlertsService;
+import com.porfirio.orariprocida2011.threads.companies.CompaniesService;
 import com.porfirio.orariprocida2011.threads.companies.CompaniesUpdate;
-import com.porfirio.orariprocida2011.threads.companies.OnRequestCompaniesDAO;
 import com.porfirio.orariprocida2011.threads.taxies.OnRequestTaxisDAO;
 import com.porfirio.orariprocida2011.threads.transports.TransportsService;
 import com.porfirio.orariprocida2011.threads.transports.TransportsUpdate;
@@ -107,8 +107,6 @@ public class OrariProcida2011Activity extends FragmentActivity {
     private String BestProvider;
     private SegnalazioneDialog segnalazioneDialog;
 
-    private OnRequestCompaniesDAO companiesDAO;
-
     private AlertsService alertsService;
     private boolean isAlertsBound = false;
     private final ServiceConnection alertsConnection = new ServiceConnection() {
@@ -167,6 +165,27 @@ public class OrariProcida2011Activity extends FragmentActivity {
         }
     };
 
+    private CompaniesService companiesService;
+    private boolean isCompaniesBound = false;
+    private final ServiceConnection companiesConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            Log.d("CompaniesService", "Service Companies connesso all'Activity");
+            CompaniesService.LocalBinder binder = (CompaniesService.LocalBinder) service;
+            companiesService = binder.getService();
+            isCompaniesBound = true;
+
+            companiesService.getUpdates().observe(OrariProcida2011Activity.this, OrariProcida2011Activity.this::onCompaniesUpdate);
+
+            companiesService.requestUpdate();
+        }
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            companiesService = null;
+            isCompaniesBound = false;
+        }
+    };
+
 
 
     private boolean hasReceivedWeather, hasReceivedCompanies, hasReceivedTransports, hasReceivedAlerts;
@@ -206,6 +225,10 @@ public class OrariProcida2011Activity extends FragmentActivity {
         startService(transportsIntent);
         bindService(transportsIntent, transportsConnection, Context.BIND_AUTO_CREATE);
 
+        Intent companiesIntent = new Intent(this, CompaniesService.class);
+        startService(companiesIntent);
+        bindService(companiesIntent, companiesConnection, Context.BIND_AUTO_CREATE);
+
         if (isTransportsBound && transportsService != null) {
             transportsService.getUpdates().observe(this, this::onTransportsUpdate);
         }
@@ -219,9 +242,7 @@ public class OrariProcida2011Activity extends FragmentActivity {
         // alertsDAO.getUpdates().observe(this, this::onAlertsUpdate);
         // alerts are requested after transports data is received
 
-        companiesDAO = new OnRequestCompaniesDAO();
-        companiesDAO.getUpdates().observe(this, this::onCompaniesUpdate);
-        companiesDAO.requestUpdate();
+        // companiesDAO = new OnRequestCompaniesDAO();
 
         taxisDAO = new OnRequestTaxisDAO();
         taxisDAO.requestUpdate();
@@ -361,7 +382,7 @@ public class OrariProcida2011Activity extends FragmentActivity {
         // NOTE:
         // LiveData should automatically remove destroyed observers but let's do it for clarity's sake
         alertsService.getUpdates().removeObservers(this);
-        companiesDAO.getUpdates().removeObservers(this);
+        companiesService.getUpdates().removeObservers(this);
         transportsService.getUpdates().removeObservers(this);
         // transportsDAO.getUpdates().removeObservers(this);
         // weatherDAO.getUpdates().removeObservers(this);
@@ -384,6 +405,12 @@ public class OrariProcida2011Activity extends FragmentActivity {
             unbindService(transportsConnection);
             isTransportsBound = false;
         }
+
+        if (isCompaniesBound) {
+            unbindService(companiesConnection);
+            isCompaniesBound = false;
+        }
+
     }
 
     @Override
@@ -791,8 +818,9 @@ public class OrariProcida2011Activity extends FragmentActivity {
         if (update.isValid()) {
             listCompagnia.clear();
             listCompagnia.addAll(update.getData());
+            Log.d("CompaniesService", "Dati compagnie aggiornati, aggiornamento UI...");
+            aggiornaLista();
         } else {
-            // TODO: handle exception
             Log.e("MainActivity", "OnCompaniesUpdate: ", update.getError());
             Toast.makeText(this, getString(R.string.error_update_companies), Toast.LENGTH_SHORT).show();
         }
