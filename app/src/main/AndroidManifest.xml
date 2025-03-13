@@ -28,6 +28,7 @@
         android:usesCleartextTraffic="true">
         <service android:name=".threads.weather.WeatherService" />
         <service android:name=".threads.alerts.AlertsService"/>
+        <service android:name=".threads.transports.TransportsService"/>
 
         <activity
             android:name=".activities.OrariProcida2011Activity"

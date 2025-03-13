@@ -33,7 +33,7 @@ import com.porfirio.orariprocida2011.threads.alerts.AlertsService;
 import com.porfirio.orariprocida2011.threads.companies.CompaniesUpdate;
 import com.porfirio.orariprocida2011.threads.companies.OnRequestCompaniesDAO;
 import com.porfirio.orariprocida2011.threads.taxies.OnRequestTaxisDAO;
-import com.porfirio.orariprocida2011.threads.transports.OnRequestTransportsDAO;
+import com.porfirio.orariprocida2011.threads.transports.TransportsService;
 import com.porfirio.orariprocida2011.threads.transports.TransportsUpdate;
 import com.porfirio.orariprocida2011.entity.Alert;
 import com.porfirio.orariprocida2011.threads.alerts.AlertUpdate;
@@ -108,9 +108,7 @@ public class OrariProcida2011Activity extends FragmentActivity {
     private SegnalazioneDialog segnalazioneDialog;
 
     private OnRequestCompaniesDAO companiesDAO;
-    // private OnRequestWeatherDAO weatherDAO;
-    private OnRequestTransportsDAO transportsDAO;
-    // private OnRequestAlertsDAO alertsDAO;
+
     private AlertsService alertsService;
     private boolean isAlertsBound = false;
     private final ServiceConnection alertsConnection = new ServiceConnection() {
@@ -146,6 +144,30 @@ public class OrariProcida2011Activity extends FragmentActivity {
     private WeatherService weatherService;
     private boolean isBound = false;
 
+    private TransportsService transportsService;
+    private boolean isTransportsBound = false;
+
+    private final ServiceConnection transportsConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            TransportsService.LocalBinder binder = (TransportsService.LocalBinder) service;
+
+            transportsService = binder.getService();
+            isTransportsBound = true;
+            Log.d("TransportsService", "Servizio trasporti connesso all'activity");
+
+            // Osserva gli aggiornamenti dei trasporti
+            transportsService.getUpdates().observe(OrariProcida2011Activity.this, OrariProcida2011Activity.this::onTransportsUpdate);
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            transportsService = null;
+            isTransportsBound = false;
+        }
+    };
+
+
 
     private boolean hasReceivedWeather, hasReceivedCompanies, hasReceivedTransports, hasReceivedAlerts;
 
@@ -180,10 +202,18 @@ public class OrariProcida2011Activity extends FragmentActivity {
         startService(alertsIntent);
         bindService(alertsIntent, alertsConnection, Context.BIND_AUTO_CREATE);
 
+        Intent transportsIntent = new Intent(this, TransportsService.class);
+        startService(transportsIntent);
+        bindService(transportsIntent, transportsConnection, Context.BIND_AUTO_CREATE);
 
-        transportsDAO = new OnRequestTransportsDAO();
-        transportsDAO.getUpdates().observe(this, this::onTransportsUpdate);
-        transportsDAO.requestUpdate();
+        if (isTransportsBound && transportsService != null) {
+            transportsService.getUpdates().observe(this, this::onTransportsUpdate);
+        }
+
+
+        // transportsDAO = new OnRequestTransportsDAO();
+        // transportsDAO.getUpdates().observe(this, this::onTransportsUpdate);
+        // transportsDAO.requestUpdate();
 
         // alertsDAO = new OnRequestAlertsDAO();
         // alertsDAO.getUpdates().observe(this, this::onAlertsUpdate);
@@ -332,7 +362,8 @@ public class OrariProcida2011Activity extends FragmentActivity {
         // LiveData should automatically remove destroyed observers but let's do it for clarity's sake
         alertsService.getUpdates().removeObservers(this);
         companiesDAO.getUpdates().removeObservers(this);
-        transportsDAO.getUpdates().removeObservers(this);
+        transportsService.getUpdates().removeObservers(this);
+        // transportsDAO.getUpdates().removeObservers(this);
         // weatherDAO.getUpdates().removeObservers(this);
         // weatherDAO.close();
 
@@ -346,6 +377,12 @@ public class OrariProcida2011Activity extends FragmentActivity {
         if (isAlertsBound) {
             unbindService(alertsConnection);
             isAlertsBound = false;
+        }
+
+        // Pulisce il service per i trasporti
+        if (isTransportsBound) {
+            unbindService(transportsConnection);
+            isTransportsBound = false;
         }
     }
 
@@ -369,7 +406,10 @@ public class OrariProcida2011Activity extends FragmentActivity {
             // cambiata semantica pulsante: se scelgo, allora carico esplicitamente da web
             case (R.id.updateWeb):
                 analytics.send(ANALYTICS_CATEGORY_UI_EVENT, "Update Orari da Web da Menu");
-                transportsDAO.requestUpdate();
+                if (isTransportsBound && transportsService != null) {
+                    transportsService.getUpdates().observe(this, this::onTransportsUpdate);
+                }
+
                 return true;
             case (R.id.meteo):
                 analytics.send(ANALYTICS_CATEGORY_UI_EVENT, "Update Meteo da Menu");
@@ -767,6 +807,7 @@ public class OrariProcida2011Activity extends FragmentActivity {
             transportList.addAll(update.getData());
             aggiornaLista();
 
+            Log.d("TransportsService", "Aggiornamento trasporti ricevuto! Numero di mezzi: " + update.getData());
             // alertsDAO.requestUpdate();
             alertsService.getUpdates();
 
