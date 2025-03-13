@@ -37,7 +37,7 @@ import com.porfirio.orariprocida2011.threads.transports.TransportsUpdate;
 import com.porfirio.orariprocida2011.entity.Alert;
 import com.porfirio.orariprocida2011.threads.alerts.AlertUpdate;
 import com.porfirio.orariprocida2011.threads.alerts.OnRequestAlertsDAO;
-import com.porfirio.orariprocida2011.threads.weather.experimental.WeatherService;
+import com.porfirio.orariprocida2011.threads.weather.WeatherService;
 import com.porfirio.orariprocida2011.utils.Analytics;
 import com.porfirio.orariprocida2011.utils.AnalyticsApplication;
 import com.porfirio.orariprocida2011.R;
@@ -60,7 +60,6 @@ import java.util.List;
 import java.util.TimeZone;
 
 import android.content.ComponentName;
-import android.content.ServiceConnection;
 import android.os.IBinder;
 
 public class OrariProcida2011Activity extends FragmentActivity {
