@@ -1,0 +1,11 @@
+La soluzione che è stata realizzata dal gruppo precedente è buona ma parziale, poichè i dati sono ora su firebase ma l'aggiornamento è soltanto su richiesta esplicita. Potete migliorare tale soluzione proponendo strategie diverse per i vari servizi. Ad esempio:
+
+- aggiornamento degli orari solo su richiesta esplicita e in apertura;
+
+- aggiornamento dei dati meteo solo in apertura;
+
+- aggiornamento delle segnalazioni periodica e in apertura.
+
+- aggiornamento di tutti gli altri dati solo in apertura.
+
+Inoltre, potete provare ad affrontare anche altre issue, compresa la lettura di dati utili per le segnalazioni a partire da altre fonti (ad es. siti delle compagnie).
