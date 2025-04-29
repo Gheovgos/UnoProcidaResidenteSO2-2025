@@ -108,6 +108,8 @@ public class OrariProcida2011Activity extends FragmentActivity {
     private SegnalazioneDialog segnalazioneDialog;
 
     private AlertsService alertsService;
+
+    private final long ALERT_FREQUENCY_MILLISECONDS = 600000;   // 10 Min in millisecondi
     private boolean isAlertsBound = false;
     private final ServiceConnection alertsConnection = new ServiceConnection() {
         @Override
@@ -119,7 +121,6 @@ public class OrariProcida2011Activity extends FragmentActivity {
             Log.d("AlertsService", "Servizio alert connesso!");
 
             segnalazioneDialog = new SegnalazioneDialog(alertsService);
-
 
             // Osserviamo gli aggiornamenti sugli alert
             alertsService.getUpdates().observe(OrariProcida2011Activity.this, OrariProcida2011Activity.this::onAlertsUpdate);
@@ -203,6 +204,18 @@ public class OrariProcida2011Activity extends FragmentActivity {
             Log.e("TaxisService", "Service Taxi disconnesso!");
             taxisService = null;
             isTaxisBound = false;
+        }
+    };
+
+    private final android.os.Handler handler = new android.os.Handler();
+    private final Runnable periodicAlertsUpdate = new Runnable() {
+        @Override
+        public void run() {
+            if (isAlertsBound && alertsService != null) {
+                alertsService.getUpdates().observe(OrariProcida2011Activity.this, OrariProcida2011Activity.this::onAlertsUpdate);
+                Log.d("ALERT PERIODICI", "ALERT AGGIORNATO");
+            }
+            handler.postDelayed(this, ALERT_FREQUENCY_MILLISECONDS); // ogni 5 secondi
         }
     };
 
@@ -378,6 +391,13 @@ public class OrariProcida2011Activity extends FragmentActivity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        handler.post(periodicAlertsUpdate);
+    }
+
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
 
@@ -420,6 +440,8 @@ public class OrariProcida2011Activity extends FragmentActivity {
             isTaxisBound = false;
         }
 
+        super.onStop();
+        handler.removeCallbacks(periodicAlertsUpdate);
 
     }
 
