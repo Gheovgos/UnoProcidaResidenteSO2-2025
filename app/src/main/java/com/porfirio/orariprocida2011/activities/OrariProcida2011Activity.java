@@ -24,11 +24,13 @@ import android.widget.ListView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.content.SharedPreferences;
 
 import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
 
+import com.porfirio.orariprocida2011.entity.Porto;
 import com.porfirio.orariprocida2011.threads.alerts.AlertsService;
 import com.porfirio.orariprocida2011.threads.companies.CompaniesService;
 import com.porfirio.orariprocida2011.threads.companies.CompaniesUpdate;
@@ -738,78 +740,34 @@ public class OrariProcida2011Activity extends FragmentActivity {
     }
 
     private String setPortoPartenza() {
-        // Trova il porto pi? vicino a quello di partenza
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return getPortoPreferitoDaFile();
+        }
+
         Location l = null;
-
-
-        if (ActivityCompat.checkSelfPermission(OrariProcida2011Activity.this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(OrariProcida2011Activity.this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            //System.exit(0);
-            return getString(R.string.tutti);
-        }
-
-        // l'accesso al GPS potrebbe non essere garantito per ragioni legate a Google Play
-        // Bisogna gestire l'eccezione e restituire un valore di default che si potrà settare in altro punto dell'app
         try {
-            l = myManager.getLastKnownLocation(BestProvider);
-            Log.d("ACTIVITY", "Posizione:" + (l != null ? l.getLongitude() : 0) + "," + (l != null ? l.getLatitude() : 0));
+            l = myManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+            if (l == null) {
+                l = myManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            }
         } catch (Exception e) {
-            Log.e("Activity", "GPS: ", e);
+            e.printStackTrace();
         }
-        if (l == null)
-            return getString(R.string.tutti);
-        //Coordinate angoli Procida
-        if ((l.getLatitude() > 40.7374) && (l.getLatitude() < 40.7733) && (l.getLongitude() > 13.9897) && (l.getLongitude() < 14.0325)) {
-            analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Procida");
-            return "Procida";
-        }
-        //Coordinate angoli Isola d'Ischia
-        if ((l.getLatitude() > 40.6921) && (l.getLatitude() < 40.7626) && (l.getLongitude() > 13.8465) && (l.getLongitude() < 13.9722))
-            //Isola d'Ischia
-            if (calcolaDistanza(l, 13.9063, 40.7496) > calcolaDistanza(l, 13.9602, 40.7319)) {
-                analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Ischia");
-                return "Ischia";
-            } else {
-                analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Casamicciola");
-                return "Casamicciola";
-            }
-        //Inserire coordinate Napoli (media porti) e Pozzuoli
-        double distNapoli = calcolaDistanza(l, 14.2575, 40.84);
-        Log.d("OrariProcida", "d(Napoli)=" + distNapoli);
-        double distPozzuoli = calcolaDistanza(l, 14.1179, 40.8239);
-        Log.d("OrariProcida", "d(Pozzuoli)=" + distPozzuoli);
-        double distMonteProcida = calcolaDistanza(l, 14.05, 40.8);
-        if (distMonteProcida < 1500) {
-            analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Monte di Procida");
-            return "Monte di Procida";
-        }
-        if (distPozzuoli < distNapoli) {
-            if (distPozzuoli < 15000) {
-                analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Pozzuoli");
-                return "Pozzuoli";
-            } else {
-                analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Napoli o Pozzuoli");
-                return "Napoli o Pozzuoli";
-            }
-        } else {
-            if (distNapoli < 15000) {
-                if (distNapoli > 1000) {
-                    analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Napoli");
-                    return "Napoli";
-                } else {
-                    if (calcolaDistanza(l, 14.2548, 40.8376) < calcolaDistanza(l, 14.2602, 40.8424)) {
-                        analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Napoli Beverello");
-                        return "Napoli Beverello";
-                    } else {
-                        analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Napoli Porta di Massa");
-                        return "Napoli Porta di Massa";
-                    }
-                }
-            } else {
-                analytics.send(ANALYTICS_CATEGORY_USER_EVENT, "From Napoli o Pozzuoli");
-                return "Napoli o Pozzuoli";
-            }
-        }
+
+        if (l == null) return getPortoPreferitoDaFile();
+
+        List<Porto> porti = Porto.caricaPorti(this);
+        String vicino = Porto.calcolaPortoPiuVicino(l, porti, 15000); // soglia di 15 km
+
+        return vicino != null ? vicino : getPortoPreferitoDaFile();
     }
+
+    private String getPortoPreferitoDaFile() {
+        SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
+        return prefs.getString("porto_preferito", getString(R.string.tutti)); // "Tutti" come fallback
+    }
+
 
     private double calcolaDistanza(Location location, double lon, double lat) {
         //calcola distanza da obiettivo
