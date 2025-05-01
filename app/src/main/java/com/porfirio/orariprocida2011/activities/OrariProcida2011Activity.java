@@ -239,6 +239,17 @@ public class OrariProcida2011Activity extends FragmentActivity {
 //            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, 534534);
 //        }
 
+        Log.d("Permessi GPS", "ACCESS_COARSE_LOCATION granted? " +
+                (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED));
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, 1001);
+        } else {
+            inizializzaSpinnerConPorto();
+        }
+
+
+
         analytics = new Analytics((AnalyticsApplication) getApplication());
 
         Intent intent = new Intent(this, WeatherService.class);
@@ -448,6 +459,24 @@ public class OrariProcida2011Activity extends FragmentActivity {
     }
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        Log.d("Permessi", "onRequestPermissionsResult - Risultato: " +
+                (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED));
+
+        if (requestCode == 1001) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                inizializzaSpinnerConPorto();
+            } else {
+                Toast.makeText(this, "Permesso posizione negato. Imposta manualmente il porto.", Toast.LENGTH_LONG).show();
+                inizializzaSpinnerConPorto();
+            }
+        }
+    }
+
+
+
+    @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         analytics.send(ANALYTICS_CATEGORY_UI_EVENT, "Open Menu");
 
@@ -640,6 +669,12 @@ public class OrariProcida2011Activity extends FragmentActivity {
         return s.toString();
     }
 
+    private void inizializzaSpinnerConPorto() {
+        portoPartenza = setPortoPartenza();
+        setSpinner();
+    }
+
+
     private void setSpinner() {
         Spinner spnNave = findViewById(R.id.spnNave);
         ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(
@@ -740,28 +775,38 @@ public class OrariProcida2011Activity extends FragmentActivity {
     }
 
     private String setPortoPartenza() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            return getPortoPreferitoDaFile();
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return getPortoPreferitoDaFile(); // fallback se permesso non concesso
         }
 
-        Location l = null;
+        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        Location location = null;
+
         try {
-            l = myManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-            if (l == null) {
-                l = myManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                location = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        if (l == null) return getPortoPreferitoDaFile();
+        if (location == null) {
+            Toast.makeText(this, "Posizione non disponibile. Usiamo il porto preferito.", Toast.LENGTH_SHORT).show();
+            return getPortoPreferitoDaFile();
+        }
 
         List<Porto> porti = Porto.caricaPorti(this);
-        String vicino = Porto.calcolaPortoPiuVicino(l, porti, 15000); // soglia di 15 km
+        String vicino = Porto.calcolaPortoPiuVicino(location, porti, 15000);
 
-        return vicino != null ? vicino : getPortoPreferitoDaFile();
+        if (vicino == null) {
+            Log.d("GPS", "Posizione null, fallback su porto preferito");
+            Toast.makeText(this, "Nessun porto rilevato vicino. Usiamo la preferenza salvata.", Toast.LENGTH_SHORT).show();
+            return getPortoPreferitoDaFile();
+        }
+        Log.d("GPS", "Posizione ottenuta: lat=" + location.getLatitude() + ", lon=" + location.getLongitude());
+        return vicino;
     }
+
 
     private String getPortoPreferitoDaFile() {
         SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
